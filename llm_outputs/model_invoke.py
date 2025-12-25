@@ -22,11 +22,20 @@ class Concepts(BaseModel):
 
 class Node(BaseModel):
     node: str = Field(description="The node")
+    description: str = Field(description="The description of the node")
     children: List['Node'] = Field(description="The children of the node")
 
 class RootNode(BaseModel):
     root: str = Field(description="The root of the mindmap")
+    description: str = Field(description="The description of the root")
     children: List[Node] = Field(description="The children of the mindmap")
+
+class Question_Answer(BaseModel):
+    question: str = Field(description="The question")
+    answer: str = Field(description="The answer")
+
+class Quiz(BaseModel):
+    quiz: List[Question_Answer] = Field(description="The quiz")
 
 # llm_concept = ChatOllama(model = MODEL_NAME, temperature = 0.7).with_structured_output(Concepts)
 # llm_mindmap = ChatOllama(model = MODEL_NAME, temperature = 0.7).with_structured_output(RootNode)
@@ -48,41 +57,32 @@ format_concept_extraction_example = """
         }]
 }
 """
-    # Here is an example:
-    # [
-    #     {
-    #         "concept": "supervised learning",
-    #         "definition": "The process of learning from labeled data to make predictions."
-    #     },
-    #     {
-    #         "concept": "Regression",
-    #         "definition": "A type of supervised learning where the target variable is continuous."
-    #     },
-    #     {
-    #         "concept": "Linear regression",
-    #         "definition": "In linear regression, a model that predicts a dependent variable based on one or more independent variables using the equation hθ(x) = θ0 + θ1x1 + ... + θnxn."
-    #     }
-    # ]
-    # """
+
 
 format_mindmap_example = """
 {
-  "root": "Neural Network Training",
+  "root": "concept 1 (str)",
+  "description": "description 1 (str)",
   "children": [
     {
-      "node": "Optimization",
+      "node": "concept 2 (str)",
+      "description": "description 2 (str)",
       "children": [
-        {"node": "Gradient Descent", "children": []},
-        {"node": "Momentum", "children": []},
-        {"node": "Adam", "children": []}
+        {"node": "concept 3 (str)", "description": "description 3 (str)", "children": [
+            {"node": "concept 4 (str)", "description": "description 4 (str)", "children": []},
+            {"node": "concept 5 (str)", "description": "description 5 (str)", "children": []}
+        ]},
+        {"node": "concept 6 (str)", "description": "description 6 (str)", "children": []},
+        {"node": "concept 7 (str)", "description": "description 7 (str)", "children": []}
       ]
     },
     {
-      "node": "Regularization",
+      "node": "concept 8 (str)",
+      "description": "description 8 (str)",
       "children": [
-        {"node": "L1", "children": []},
-        {"node": "L2", "children": []},
-        {"node": "Dropout", "children": []}
+        {"node": "concept 9 (str)", "description": "description 9 (str)", "children": []},
+        {"node": "concept 10 (str)", "description": "description 10 (str)", "children": []},
+        {"node": "concept 11 (str)", "description": "description 11 (str)", "children": []}
       ]
     }
   ]
@@ -119,6 +119,24 @@ def model_invoke_qna(query, retrieved_docs):
     ], options = options)
     return response.message.content
 
+def model_invoke_generate_quiz(topic, retrieved_docs):
+    system_prompt = f"""You are a helpful assistant that generates a quiz based on the given text. Read the given text, and generate a quiz accurately. Do not hallucinate. Make sure the quiz questions are related to the topic. Give ONLY the quiz. The quiz topic is: {topic}. Here are retrieved chunks from the document: 
+    {" ".join([doc.page_content for doc in retrieved_docs])}\n\n"""
+
+    options = {'temperature': 0.7}
+    response = chat(model=MODEL_NAME, messages = [
+        {
+            "role": "system",
+            "content": system_prompt
+        }
+    ], options = options, format=Quiz.model_json_schema())
+    response = response.message.content
+    try:
+        response = Quiz.parse_raw(response)
+    except:
+        response = None
+    return response
+
 def concept_extraction(retrieved_docs, format_example = format_concept_extraction_example):
     system_prompt = f"""You are a helpful assistant that extracts concepts from the given text. Read the given text, and extract concepts ACCURATELY. Extract AS MANY topics as possible. Do not hallucinate. Do not give inconsistent concepts. Here are retrieved chunks from the document: 
     {" ".join([doc.page_content for doc in retrieved_docs])}\n\n
@@ -142,8 +160,10 @@ def concept_extraction(retrieved_docs, format_example = format_concept_extractio
     response = response.message.content
     # response = """{"concepts": """ + response + "}"
     # validate, dont return
-
+    
+    print("CONCEPTS RAW ===========================================================================")
     print(response)
+    print("=======================================================================================")
     
     try:
         response = Concepts.parse_raw(response)
@@ -155,9 +175,18 @@ def generate_mindmap(concepts: Concepts, format_example = format_mindmap_example
     # only output in the given format to be read by pydantic model
 
     concept_string = "\n".join(["{\"concept\": \"" + concept.concept + "\", \"definition\": \"" + concept.definition + "\"}" for concept in concepts.concepts])
-    system_prompt = f"""You are a helpful assistant that generates mindmaps based on the given text. Read the given text, and generate a mindmap accurately. Do not hallucinate. Do not give inconsistent mindmaps. Here are retrieved chunks from the document: 
-    {concept_string}\n\n
-    Only output in the given example format:\n {format_example}"""
+    system_prompt = f"""You are a helpful assistant that generates mindmaps based on the given text. Read the given text, and generate a mindmap accurately in the form of a TREE.
+    - The concepts are given in curly brackets
+    - ONLY REARRANGE THIS CONCEPTS INTO A TREE, DO NOT CREATE NEW CONCEPTS
+    - root/node is the concept name
+    - description is the concept definition
+    - children is the list of child concepts
+    - Do NOT hallucinate
+    - Do NOT give inconsistent mindmaps
+    - Do NOT create any concepts not provided
+    
+    Here are retrieved chunks from the document: 
+    {concept_string}"""
 
     options = {'temperature': 0.8}
     response = chat(model=MODEL_NAME, messages = [
@@ -165,40 +194,30 @@ def generate_mindmap(concepts: Concepts, format_example = format_mindmap_example
             "role": "system",
             "content": system_prompt
         }
-    ], options = options)
+    ], options = options, format=RootNode.model_json_schema())
 
     response = response.message.content
+
+    print("MINDMAP RAW ===========================================================================")
+    print(response)
+    print("=======================================================================================")
     # validate, dont return
     
-    # try:
-    #     RootNode.parse_raw(response)
-    # except:
-    #     return None
+    try:
+        response = RootNode.parse_raw(response)
+    except:
+        return None
     return response
 
 
 if __name__ == "__main__":
 
-    resp = """
-    {
-    "concepts": [
-        {
-            "concept": "bias-variance tradeoff",
-            "definition": "Bias and variance are two fundamental characteristics of machine learning models. High bias can cause a model to be overly simplistic, leading to underfitting where the model is too rigid to capture underlying trends in data (sometimes called 'blindness'). Conversely, high variance might lead the model to adapt too much to specific features or noise present only in training datasets - this can make it perform poorly on unseen testing samples. It's a tradeoff that demands balancing between bias and reducing its counterpart."
-        },
-        {
-            "concept": "softmax regression",
-            "definition": "Softmax function is an extension of logistic regression to multi-class classification problems where the output can take more than two classes. In softmax regression, it models a categorical distribution whose elements sum up to 1 and represent probabilities that define class membership for each input x."
-        },
-        {
-            "concept": "kernel trick",
-            "definition": "The kernel function is pivotal in support vector machines (SVMs). Instead of directly computing the inner product between two inputs, which can be computationally expensive and complex if data isn't linearly separable, SVM applies a non-linear transformation using kernels. This method allows algorithms to operate within higher dimensions implicitly."     
-        },
-    ]
-}
-    """
-
-    print(Concepts.parse_raw(resp))
+    R = RootNode(root="root", description="description", children=[])
+    N = Node(node="node", description="description", children=[])
+    C = Concept(concept="concept", definition="definition")
+    print(type(R))
+    print(type(N))
+    print(type(C))
 
 
     # retrieved_docs = [Document(page_content="This is a test document.")]
