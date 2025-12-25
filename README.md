@@ -1,6 +1,6 @@
 # DeepLearn: RAG Powered Learning Assistant
 
-DeepLearn is a Streamlit-based application designed to assist in learning from documents using Retrieval-Augmented Generation (RAG). It allows users to upload PDF documents and interact with them through summarization, question answering, quiz generation, and mindmap visualization.
+DeepLearn is a LLM-based application designed to assist in learning from documents using Retrieval-Augmented Generation (RAG). It allows users to upload PDF documents and interact with them through summarization, question answering, quiz generation, and mindmap visualization.
 
 ## Tech Stack
 
